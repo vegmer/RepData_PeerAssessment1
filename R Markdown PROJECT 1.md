@@ -1,0 +1,168 @@
+---
+title: "Reproducible data. Project 1."
+author: "MVV"
+date: "October 3, 2016"
+output: html_document:
+                keep_md:TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone Up. These type of devices are part of the "quantified self" movement -- a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+
+## 1. Loading and preprocessing the data
+
+The first chunk of code will create a folder for this project in the working directory and download the data set.
+
+```{r importing}
+mainDir <- getwd()
+subDir <- "Reproducible data"
+
+if(file.exists(subDir)){
+        setwd(file.path(mainDir, subDir))
+} else {
+        dir.create(file.path(mainDir, subDir))
+        setwd(file.path(mainDir, subDir))
+}
+
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+destfile <- "activity.zip"
+download.file(url, destfile)
+unzip("activity.zip")
+mydata <- read.csv("activity.csv")
+```
+
+
+Let's look at a summary of this data set:
+
+```{r summary}
+summary(mydata)
+```
+
+
+## 2. What is the mean total number of steps taken per day?
+
+First we're going to call the library "dplyr", which we'll use for the analysis.
+
+```{r dplyr, warning=FALSE}
+library(dplyr)
+```
+
+Now we're going to calculate the mean number of steps per day and make a histogram with this information.
+
+```{r mean number steps}
+MeanStepsPerDay <- mydata %>%
+        group_by(date) %>%
+        summarise_each(funs(sum(., na.rm=T)))
+
+hist(MeanStepsPerDay$steps)
+```
+
+
+The mean and the median, after removing all the NAs, are :
+
+```{r mean and median}
+mean(MeanStepsPerDay$steps, na.rm=T)
+median(MeanStepsPerDay$steps, na.rm=T)
+```
+
+
+  
+## 3. What is the average daily activity pattern?
+
+We will calculate this in the same way we calculated the total number of steps by day. We'll generate a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+```{r daily activity pattern}
+MeanStepsPerInt <- mydata[,-2] %>%
+        group_by(interval) %>%
+        summarise_each(funs(mean(., na.rm=T)))
+
+plot(MeanStepsPerInt, type="l")
+```
+
+We can calculate the 5-minute interval that contains the maximum number of steps across days by arranging the rows of the object we just created and selecting the first element.
+
+```{r Interval with max number of steps}
+arrange(MeanStepsPerInt, desc(steps))[1,]
+```
+
+The interval during which this person takes the maximum number of steps on average is `r as.numeric(arrange(MeanStepsPerInt, desc(steps))[1,][1])`. During this interval, the person took `r round(as.numeric(arrange(MeanStepsPerInt, desc(steps))[1,][2]), 2)` steps. 
+
+
+
+## 4. Imputing missing values
+
+Let's calculate the total number of rows with NA values in the 'step' column:
+```{r Total NA rows}
+sum(is.na(mydata$steps)) 
+```
+
+I'll replace those NA values by the mean value for that interval throughout every day.
+```{r Replacing NAs}
+mydataOriginal <- mydata #I'm making a new object with the original data because I'm going to change the original dataset
+
+for(i in 1:length(mydata$steps)){
+        if(is.na(mydata$steps[i])){
+                intervalValue <- mydata$interval[i]
+                imputValue <- as.numeric(MeanStepsPerInt[which(MeanStepsPerInt$interval==intervalValue),2])
+                mydata$steps[i]=imputValue} 
+        else {mydata$steps[i]=mydata$steps[i]}
+}
+```
+
+
+Check that there are no NAs in that column anymore:
+```{r recheck NAs}
+sum(is.na(mydata$steps))
+```
+
+
+Recalculate everything we did on section number 2 but with the replaced NA values.
+```{r recalculate with NAs}
+MeanStepsPerDay <- mydata %>%
+        group_by(date) %>%
+        summarise_each(funs(sum(., na.rm=T)))
+
+hist(MeanStepsPerDay$steps)
+
+mean(MeanStepsPerDay$steps)
+summary(MeanStepsPerDay$steps)
+```
+
+The mean and the median are now equivalent.
+
+
+
+## 5. Are there differences in activity between weekdays and weekends?
+
+Let's add a column in our dataset indicating whether the date is a weekday or a weekend
+
+```{r weekdays}
+mydata$weekdays <- weekdays(as.Date(mydata$date))
+
+for(i in 1:length(mydata$weekdays)){
+        if(substr(mydata$weekdays[i], 1,1)=="S"){mydata$weekdays[i]="Weekend"} 
+        else {mydata$weekdays[i]="Weekday"}
+}
+
+summary(mydata)
+```
+
+
+Plot the average number of steps taken on each interval depending on whether it was a weekday or a weekend:
+
+```{r weekday vs weekend}
+MeanStepsPerIntPerWeekday <- mydata[,-2] %>%
+  group_by(interval, weekdays) %>%
+  summarise_each(funs(mean(., na.rm=T)))
+
+library(ggplot2)
+ggplot(MeanStepsPerIntPerWeekday, aes(interval, steps))+geom_line()+facet_grid(weekdays~.)
+```
+
+This person's pattern of activity is different on weekdays than on weekends. On weekdays, most of the steps occur in the interval between 750 and 1000. On weekends, the person is much less active on that interval but slightly more active between intervals 1000 to 2000.
